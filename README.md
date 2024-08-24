@@ -11,12 +11,19 @@ New features !
 In the Setting panel: 
 
 Transfer X : set the x coordinate of the model 
+
 Transfer Y : edit the y coordinate of the model 
+
 Transfer Z : edit the z coordinate of the model
+
  
 Rotate X : edit the x Rotation of the model 
+
 Rotate Y : edit the y Rotation of the model 
+
 Rotate Z : adjust the z Rotation of the model 
+
+
 
 Scale : edit the size of the model 
 
