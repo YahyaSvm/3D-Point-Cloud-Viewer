@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Point Cloud Viewer</title>
+    <title>3D Model Viewer</title>
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
@@ -16,21 +16,82 @@
             padding: 10px;
             border-radius: 5px;
         }
+        #settingsPanel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        #settingsPanel input {
+            margin-bottom: 5px;
+        }
+        #settingsButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 2;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <div id="upload">
-        <input type="file" id="fileInput" accept=".obj">
+        <input type="file" id="fileInput" accept=".obj,.glb">
+    </div>
+    <div id="settingsButton">⚙️</div>
+    <div id="settingsPanel">
+        <h3>Model Settings</h3>
+        <label for="translateX">Translate X:</label>
+        <input type="range" id="translateX" min="-10" max="10" step="0.1" value="0">
+        <br>
+        <label for="translateY">Translate Y:</label>
+        <input type="range" id="translateY" min="-10" max="10" step="0.1" value="0">
+        <br>
+        <label for="translateZ">Translate Z:</label>
+        <input type="range" id="translateZ" min="-10" max="10" step="0.1" value="0">
+        <br>
+        <label for="rotateX">Rotate X:</label>
+        <input type="range" id="rotateX" min="0" max="360" step="1" value="0">
+        <br>
+        <label for="rotateY">Rotate Y:</label>
+        <input type="range" id="rotateY" min="0" max="360" step="1" value="0">
+        <br>
+        <label for="rotateZ">Rotate Z:</label>
+        <input type="range" id="rotateZ" min="0" max="360" step="1" value="0">
+        <br>
+        <label for="scale">Scale:</label>
+        <input type="range" id="scale" min="0.1" max="5" step="0.1" value="1">
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script>
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer, controls, model;
+        let translateX = document.getElementById('translateX');
+        let translateY = document.getElementById('translateY');
+        let translateZ = document.getElementById('translateZ');
+        let rotateX = document.getElementById('rotateX');
+        let rotateY = document.getElementById('rotateY');
+        let rotateZ = document.getElementById('rotateZ');
+        let scale = document.getElementById('scale');
+        let settingsPanel = document.getElementById('settingsPanel');
+        let settingsButton = document.getElementById('settingsButton');
+        let isSettingsOpen = false;
 
         init();
         animate();
 
         document.getElementById('fileInput').addEventListener('change', handleFile);
+        settingsButton.addEventListener('click', toggleSettingsPanel);
 
         function init() {
             scene = new THREE.Scene();
@@ -46,6 +107,8 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
 
             window.addEventListener('resize', onWindowResize, false);
+
+            setupSettingsPanel();
         }
 
         function onWindowResize() {
@@ -57,59 +120,118 @@
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
+            updateModelTransformations();
             renderer.render(scene, camera);
         }
 
         function handleFile(event) {
             const file = event.target.files[0];
-            if (file && file.name.endsWith('.obj')) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const contents = e.target.result;
-                    const vertices = parseOBJ(contents);
-
-                    if (vertices.length > 0) {
-                        const pointsGeometry = new THREE.BufferGeometry().setFromPoints(vertices);
-                        const pointsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05 });
-                        const points = new THREE.Points(pointsGeometry, pointsMaterial);
-
-                        // Scale the points to fit into the view
-                        pointsGeometry.computeBoundingBox();
-                        const center = pointsGeometry.boundingBox.getCenter(new THREE.Vector3());
-                        const size = pointsGeometry.boundingBox.getSize(new THREE.Vector3());
-                        const maxAxis = Math.max(size.x, size.y, size.z);
-                        points.scale.setScalar(1.0 / maxAxis);
-                        points.position.sub(center).multiplyScalar(1.0 / maxAxis);
-
-                        // Clear previous points and add new points
-                        while (scene.children.length > 0) {
-                            scene.remove(scene.children[0]);
-                        }
-                        scene.add(points);
-                    } else {
-                        alert('No valid vertices found in the file.');
-                    }
-                };
-                reader.readAsText(file);
-            }
-        }
-
-        function parseOBJ(data) {
-            const lines = data.split('\n');
-            const vertices = [];
-
-            for (let line of lines) {
-                line = line.trim();
-                if (line.startsWith('v ')) {
-                    const parts = line.split(' ').slice(1).map(Number);
-                    if (parts.length === 3) {
-                        vertices.push(new THREE.Vector3(parts[0], parts[1], parts[2]));
-                    }
+            if (file) {
+                if (file.name.endsWith('.obj')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const contents = e.target.result;
+                        loadOBJ(contents);
+                    };
+                    reader.readAsText(file);
+                } else if (file.name.endsWith('.glb')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const arrayBuffer = e.target.result;
+                        loadGLB(arrayBuffer);
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    alert('Unsupported file type. Please upload a .obj or .glb file.');
                 }
             }
-
-            return vertices;
         }
+
+        function loadOBJ(text) {
+            const loader = new THREE.OBJLoader();
+            const object = loader.parse(text);
+
+            clearScene();
+            model = object;
+            scene.add(model);
+            centerAndScaleModel(model);
+        }
+
+        function loadGLB(arrayBuffer) {
+            const loader = new THREE.GLTFLoader();
+            loader.parse(arrayBuffer, '', function(gltf) {
+                clearScene();
+                model = gltf.scene;
+                scene.add(model);
+                centerAndScaleModel(model);
+            });
+        }
+
+        function clearScene() {
+            while (scene.children.length > 0) {
+                scene.remove(scene.children[0]);
+            }
+        }
+
+        function centerAndScaleModel(model) {
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3()).length();
+            const center = box.getCenter(new THREE.Vector3());
+
+            model.position.sub(center);
+            model.scale.setScalar(1 / size);
+
+            camera.position.z = size * 1.5;
+        }
+
+        function updateModelTransformations() {
+            if (model) {
+                model.position.set(
+                    parseFloat(translateX.value),
+                    parseFloat(translateY.value),
+                    parseFloat(translateZ.value)
+                );
+                model.rotation.set(
+                    THREE.MathUtils.degToRad(parseFloat(rotateX.value)),
+                    THREE.MathUtils.degToRad(parseFloat(rotateY.value)),
+                    THREE.MathUtils.degToRad(parseFloat(rotateZ.value))
+                );
+                model.scale.setScalar(parseFloat(scale.value));
+            }
+        }
+
+        function setupSettingsPanel() {
+            translateX.addEventListener('input', updateModelTransformations);
+            translateY.addEventListener('input', updateModelTransformations);
+            translateZ.addEventListener('input', updateModelTransformations);
+            rotateX.addEventListener('input', updateModelTransformations);
+            rotateY.addEventListener('input', updateModelTransformations);
+            rotateZ.addEventListener('input', updateModelTransformations);
+            scale.addEventListener('input', updateModelTransformations);
+        }
+
+        function toggleSettingsPanel() {
+            isSettingsOpen = !isSettingsOpen;
+            settingsPanel.style.display = isSettingsOpen ? 'block' : 'none';
+        }
+
+        document.addEventListener('keydown', function(event) {
+            const speed = 0.1;
+            switch (event.key) {
+                case 'w':
+                    camera.position.z -= speed;
+                    break;
+                case 's':
+                    camera.position.z += speed;
+                    break;
+                case 'a':
+                    camera.position.x -= speed;
+                    break;
+                case 'd':
+                    camera.position.x += speed;
+                    break;
+            }
+        });
     </script>
 </body>
 </html>
